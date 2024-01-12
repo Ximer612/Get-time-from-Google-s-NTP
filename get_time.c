@@ -15,18 +15,52 @@
 
 typedef struct ntp_packet
 {
-    unsigned char leap_version_mode;
-    unsigned char stratum;
-    unsigned char poll;
-    unsigned char precision;
-    unsigned int root_delay;
-    unsigned int root_dispersion;
-    char rfid[4];
-    unsigned long long ref_timestamp;
-    unsigned long long original_timestamp;
-    unsigned long long receive_timestamp;
-    unsigned long long transmit_timestamp;
+    const unsigned char leap_version_mode;
+    const unsigned char stratum;
+    const unsigned char poll;
+    const unsigned char precision;
+    const unsigned int root_delay;
+
+    const unsigned int root_dispersion;
+    const char rfid[4];
+
+    const unsigned long long ref_timestamp;
+    const unsigned long long original_timestamp;
+    const unsigned long long receive_timestamp;
+    const unsigned long long transmit_timestamp;
 } ntp_packet;
+
+void print_ntp_packet(ntp_packet packet)
+{
+    MAGENTA_PRINT("Leap => %d, Version => %d, Mode => %d", packet.leap_version_mode >> 6, packet.leap_version_mode >> 3 & 0xFFF, packet.leap_version_mode & 0xF);
+    MAGENTA_PRINT("stratum => %d", packet.stratum);
+    MAGENTA_PRINT("poll => %d", packet.poll);
+    MAGENTA_PRINT("precision => %d", packet.precision);
+    MAGENTA_PRINT("root_delay => %d", packet.root_delay);
+    MAGENTA_PRINT("root_dispersion => %d", packet.root_dispersion);
+    MAGENTA_PRINT("reference identifier => %s", packet.rfid);
+    MAGENTA_PRINT("reference timestamp => %llu", packet.ref_timestamp);
+    MAGENTA_PRINT("original timestamp => %llu", packet.original_timestamp);
+    MAGENTA_PRINT("receive timestamp => %llu", packet.receive_timestamp);
+    MAGENTA_PRINT("transmit timestamp => %llu", packet.transmit_timestamp);
+}
+
+void print_ntp_packet_inline(ntp_packet packet)
+{
+    SET_BLUE_PRINT();
+    printf("Leap => %d, Version => %d, Mode => %d", packet.leap_version_mode >> 6, packet.leap_version_mode >> 3 & 0xFFF, packet.leap_version_mode & 0xF);
+    printf(", stratum => %d", packet.stratum);
+    printf(", poll => %d", packet.poll);
+    printf(", precision => %d", packet.precision);
+    printf(", root_delay => %d", packet.root_delay);
+    printf(", root_dispersion => %d", packet.root_dispersion);
+    printf(", reference identifier => %s", packet.rfid);
+    printf(", reference timestamp => %llu", packet.ref_timestamp);
+    printf(", original timestamp => %llu", packet.original_timestamp);
+    printf(", receive timestamp => %llu", packet.receive_timestamp);
+    printf(", transmit timestamp => %llu \n", packet.transmit_timestamp);
+    SET_DEFAULT_PRINT();
+}
 
 int main(int argc, char **argv)
 {
@@ -53,52 +87,45 @@ int main(int argc, char **argv)
     const int leap = 0;
     const int version = 4;
     const int mode = 3;
-    const char *reference_identifier = "\0\0\0\0";
 
-    ntp_packet sender_packet;
-    sender_packet.leap_version_mode = leap << 6 | version << 3 | mode;
-    strcpy_s(sender_packet.rfid, sizeof(sender_packet.rfid), reference_identifier);
+    const time_t now = time(NULL);
+    CYAN_PRINT("Actual time => %llu", now);
 
-    const int now = (int)time(NULL);
-
-    CYAN_PRINT("Actual time => %d", now);
-
+    ntp_packet sender_packet = {leap << 6 | version << 3 | mode,0,0,0,0,0,"\0\0\0\0",0,(unsigned long long)now,0,0
+    };
+    
     struct sockaddr_in sin;
     inet_pton(AF_INET, "216.239.35.12", &sin.sin_addr); // this will create a big endian 32 bit address
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(123); // converts 9999 to big endian
+    sin.sin_port = htons(123);
 
     int sent_bytes = sendto(s, (char *)&sender_packet, sizeof(ntp_packet), 0, (struct sockaddr *)&sin, sizeof(sin));
     GREEN_PRINT("sent %d bytes via UDP", sent_bytes);
 
-    char buffer[sizeof(ntp_packet)];
     ntp_packet recv_packet;
+    memset(&recv_packet,0,sizeof(ntp_packet));
+    
+    struct sockaddr_in sender;
+    int sender_len = sizeof(sender);
+    size_t received_bytes = recvfrom(s, (char*)&recv_packet, sizeof(recv_packet), 0,
+                                      (struct sockaddr*)&sender, &sender_len);
+    print_ntp_packet(recv_packet);
 
-    for (;;)
-    {
-        struct sockaddr_in sender_in;
-        int sender_in_size = sizeof(sender_in);
-        int len = recvfrom(s, (char *)&recv_packet, sizeof(ntp_packet), 0, (struct sockaddr *)&sender_in, &sender_in_size);
-        if (len > 0)
-        {
-            char addr_as_string[64];
-            inet_ntop(AF_INET, &sender_in.sin_addr, addr_as_string, 64);
-            GREEN_PRINT("received %d bytes from %s:%d", len, addr_as_string, ntohs(sender_in.sin_port));
-            break;
-        }
-    }
+    char outstr[128];
+    time_t t;
+    struct tm tmp;
 
-    MAGENTA_PRINT("Leap => %d, Version => %d, Mode => %d", recv_packet.leap_version_mode >> 6, recv_packet.leap_version_mode >> 3 & 0xFFF, recv_packet.leap_version_mode & 0xF);
-    MAGENTA_PRINT("stratum => %d", recv_packet.stratum);
-    MAGENTA_PRINT("poll => %d", recv_packet.poll);
-    MAGENTA_PRINT("precision => %d", recv_packet.precision);
-    MAGENTA_PRINT("root_delay => %d", recv_packet.root_delay);
-    MAGENTA_PRINT("root_dispersion => %d", recv_packet.root_dispersion);
-    MAGENTA_PRINT("reference identifier => %s", recv_packet.rfid);
-    MAGENTA_PRINT("reference timestamp => %llu", recv_packet.ref_timestamp);
-    MAGENTA_PRINT("original timestamp => %llu", recv_packet.original_timestamp);
-    MAGENTA_PRINT("receive timestamp => %llu", recv_packet.receive_timestamp);
-    MAGENTA_PRINT("transmit timestamp => %llu", recv_packet.transmit_timestamp);
+    localtime_s(&tmp,&now);
+    strftime(outstr, sizeof(outstr), "%a, %d %b %Y %T %z", &tmp);
+    YELLOW_PRINT("My computer's today is %s", outstr);
+
+    time_t recv_time = (time_t)((recv_packet.receive_timestamp >> 32));
+
+    localtime_s(&tmp,&recv_time);
+    strftime(outstr, sizeof(outstr), "%a, %d %b %Y %T %z", &tmp);
+    YELLOW_PRINT("Server google's today is %s", outstr);
+
+    //Python result => (36, 1, 0, 236, 0, 7, b'GOOG', 16810710409316310953, 0, 16810710409316310954, 16810710409316310956)
 
     return 0;
 }
