@@ -1,0 +1,1 @@
+clang.exe -o get_time.exe get_time.c -l ws2_32 -I .\include
